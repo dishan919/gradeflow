@@ -1,0 +1,14 @@
+import { DEFAULT_SCALE } from '../constants/grades.js';
+const PREFIX='gradeflow.';
+function read(key, fallback) { try { const value=JSON.parse(localStorage.getItem(PREFIX+key)); return value ?? fallback; } catch { return fallback; } }
+function write(key,value) { try { localStorage.setItem(PREFIX+key,JSON.stringify(value)); } catch { throw new Error('Browser storage is unavailable or full. Enable storage to save your changes.'); } }
+export function users() { const data=read('users',[]); return Array.isArray(data)?data.filter(u=>u && typeof u.id==='string' && typeof u.email==='string' && typeof u.name==='string' && typeof u.hash==='string' && typeof u.salt==='string'):[]; }
+export function session() { const id=read('session',null); return users().find(u=>u.id===id) || null; }
+export function logout() { localStorage.removeItem(PREFIX+'session'); }
+async function hash(password,salt) { if(!crypto.subtle) throw new Error('Authentication needs HTTPS or localhost with Web Crypto support.'); const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']); const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:new TextEncoder().encode(salt),iterations:150000,hash:'SHA-256'},key,256); return Array.from(new Uint8Array(bits),b=>b.toString(16).padStart(2,'0')).join(''); }
+export async function register(name,email,password) { email=email.trim().toLowerCase(); const all=users(); if(all.some(u=>u.email===email)) throw new Error('An account with this email already exists. Please sign in.'); const salt=Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join(''); const user={id:crypto.randomUUID(),name:name.trim(),email,salt,hash:await hash(password,salt)}; write('users',[...all,user]); write('session',user.id); return user; }
+export async function login(email,password) { const user=users().find(u=>u.email===email.trim().toLowerCase()); if(!user || await hash(password,user.salt)!==user.hash) throw new Error('Email or password is incorrect.'); write('session',user.id); return user; }
+export function getSemesters(id) { const value=read('semesters.'+id,[]); return Array.isArray(value)?value.filter(s=>s && typeof s.id==='string' && typeof s.name==='string' && Array.isArray(s.subjects) && s.subjects.length && s.subjects.every(c=>c && typeof c.name==='string' && Number.isFinite(c.credits) && c.credits>0 && Number.isFinite(c.points) && c.points>=0)):[]; }
+export function saveSemesters(id,data) { write('semesters.'+id,data); }
+export function getScale(id) { const value=read('scale.'+id,DEFAULT_SCALE); return value && typeof value==='object' && Object.keys(DEFAULT_SCALE).every(g=>Number.isFinite(value[g]) && value[g]>=0 && value[g]<=4)?value:DEFAULT_SCALE; }
+export function saveScale(id,data) { write('scale.'+id,data); }
